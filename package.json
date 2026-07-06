@@ -12,6 +12,7 @@
     "db:reset-admin": "node scripts/reset-admin.mjs"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "bcryptjs": "^2.4.3",
     "compression": "^1.7.4",
     "cors": "^2.8.5",
@@ -19,18 +20,19 @@
     "express": "^4.18.2",
     "express-validator": "^7.0.1",
     "helmet": "^7.0.0",
-    "jsonwebtoken": "^9.0.2",
+    "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
     "mysql2": "^3.3.3",
     "pg": "^8.22.0"
   },
   "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/compression": "^1.7.5",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.17",
-    "@types/jsonwebtoken": "^9.0.2",
+    "@types/jsonwebtoken": "^9.0.10",
     "@types/morgan": "^1.9.4",
     "@types/multer": "^1.4.7",
     "@types/node": "^22.16.5",
