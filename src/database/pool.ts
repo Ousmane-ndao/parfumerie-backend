@@ -1,42 +1,31 @@
-import mysql from "mysql2/promise";
+import { Pool } from "pg";
 
-let pool: mysql.Pool | null = null;
-
-function env(key: string, fallback = ""): string {
-  return (
-    process.env[key] ??
-    ({
-      MYSQL_HOST: process.env.DB_HOST,
-      MYSQL_PORT: process.env.DB_PORT,
-      MYSQL_USER: process.env.DB_USER,
-      MYSQL_PASSWORD: process.env.DB_PASSWORD,
-      MYSQL_DATABASE: process.env.DB_NAME,
-    } as Record<string, string | undefined>)[key] ??
-    fallback
-  );
-}
+let pool: Pool | null = null;
 
 export function isDbConfigured(): boolean {
-  const host = env("MYSQL_HOST");
-  const database = env("MYSQL_DATABASE");
-  return Boolean(host && database);
+  const url = process.env.DATABASE_URL;
+  return Boolean(url && url.startsWith("postgresql://"));
 }
 
-export function getPool(): mysql.Pool {
+export function getPool(): Pool {
   if (!isDbConfigured()) {
-    throw new Error("Base de données non configurée. Définissez MYSQL_HOST et MYSQL_DATABASE dans .env");
+    throw new Error(
+      "Base de données non configurée. Définissez DATABASE_URL dans .env (URL PostgreSQL Neon)"
+    );
   }
+
   if (!pool) {
-    pool = mysql.createPool({
-      host: env("MYSQL_HOST", "127.0.0.1"),
-      port: Number(env("MYSQL_PORT", "3306")),
-      user: env("MYSQL_USER", "root"),
-      password: env("MYSQL_PASSWORD", ""),
-      database: env("MYSQL_DATABASE", "salaichaparfumeur"),
-      waitForConnections: true,
-      connectionLimit: 10,
-      charset: "utf8mb4",
+    pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 10,
+      idleTimeoutMillis: 30000,
+    });
+
+    // Gestion d'erreur avec typage explicite
+    pool.on("error", (err: Error) => {
+      console.error("❌ Erreur inattendue du pool PostgreSQL :", err);
     });
   }
+
   return pool;
 }

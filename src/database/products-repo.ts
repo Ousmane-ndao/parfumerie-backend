@@ -1,8 +1,7 @@
-import type { RowDataPacket, ResultSetHeader } from "mysql2";
 import { getPool } from "./pool.js";
 import type { PerfumeFamily, ProductInput, ProductType, ProductWithId } from "../utils/product-validation.js";
 
-type ProductRow = RowDataPacket & {
+type ProductRow = {
   id: number;
   ref: string;
   name: string;
@@ -55,26 +54,38 @@ function rowToProduct(row: ProductRow): ProductWithId {
 }
 
 export async function listProducts(): Promise<ProductWithId[]> {
-  const [rows] = await getPool().query<ProductRow[]>("SELECT * FROM products ORDER BY type, name");
-  return rows.map(rowToProduct);
+  const pool = getPool();
+  const result = await pool.query<ProductRow>(
+    "SELECT * FROM products ORDER BY type, name"
+  );
+  return result.rows.map(rowToProduct);
 }
 
 export async function getProductByRef(ref: string): Promise<ProductWithId | null> {
-  const [rows] = await getPool().query<ProductRow[]>("SELECT * FROM products WHERE ref = ? LIMIT 1", [ref]);
-  return rows[0] ? rowToProduct(rows[0]) : null;
+  const pool = getPool();
+  const result = await pool.query<ProductRow>(
+    "SELECT * FROM products WHERE ref = $1 LIMIT 1",
+    [ref]
+  );
+  return result.rows[0] ? rowToProduct(result.rows[0]) : null;
 }
 
 export async function getProductById(id: number): Promise<ProductWithId | null> {
-  const [rows] = await getPool().query<ProductRow[]>("SELECT * FROM products WHERE id = ? LIMIT 1", [id]);
-  return rows[0] ? rowToProduct(rows[0]) : null;
+  const pool = getPool();
+  const result = await pool.query<ProductRow>(
+    "SELECT * FROM products WHERE id = $1 LIMIT 1",
+    [id]
+  );
+  return result.rows[0] ? rowToProduct(result.rows[0]) : null;
 }
 
 async function countProductsByType(type: ProductType): Promise<number> {
-  const [rows] = await getPool().query<(RowDataPacket & { c: number })[]>(
-    "SELECT COUNT(*) AS c FROM products WHERE type = ?",
-    [type],
+  const pool = getPool();
+  const result = await pool.query<{ c: number }>(
+    "SELECT COUNT(*) AS c FROM products WHERE type = $1",
+    [type]
   );
-  return rows[0]?.c ?? 0;
+  return result.rows[0]?.c ?? 0;
 }
 
 export async function createProduct(input: ProductInput): Promise<ProductWithId> {
@@ -86,16 +97,21 @@ export async function createProduct(input: ProductInput): Promise<ProductWithId>
     ref = `SAL-${input.type.toUpperCase().slice(0, 3)}-${String(count + 1).padStart(3, "0")}`;
   }
 
-  const [existing] = await pool.query<RowDataPacket[]>("SELECT id FROM products WHERE ref = ?", [ref]);
-  if (existing.length > 0) {
+  // Vérifier l'unicité de la référence
+  const existing = await pool.query<{ id: number }>(
+    "SELECT id FROM products WHERE ref = $1",
+    [ref]
+  );
+  if (existing.rows.length > 0) {
     ref = `SAL-${input.type.toUpperCase().slice(0, 3)}-${Date.now()}`;
   }
 
-  const [result] = await pool.query<ResultSetHeader>(
+  const insertResult = await pool.query<{ id: number }>(
     `INSERT INTO products (
       ref, name, type, family, price, image, short_description, description,
       notes_top, notes_heart, notes_base, contenance, concentration, available, featured
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+    RETURNING id`,
     [
       ref,
       input.name,
@@ -112,28 +128,30 @@ export async function createProduct(input: ProductInput): Promise<ProductWithId>
       input.concentration,
       input.available ? 1 : 0,
       input.featured ? 1 : 0,
-    ],
+    ]
   );
 
-  const created = await getProductById(result.insertId);
+  const newId = insertResult.rows[0].id;
+  const created = await getProductById(newId);
   if (!created) throw new Error("Produit non créé");
   return created;
 }
 
 export async function updateProduct(id: number, input: ProductInput): Promise<ProductWithId> {
+  const pool = getPool();
   let ref = input.ref?.trim();
   if (!ref) {
     const count = await countProductsByType(input.type);
     ref = `SAL-${input.type.toUpperCase().slice(0, 3)}-${count + 1}`;
   }
 
-  await getPool().query(
+  await pool.query(
     `UPDATE products SET
-      ref = ?, name = ?, type = ?, family = ?, price = ?, image = ?,
-      short_description = ?, description = ?,
-      notes_top = ?, notes_heart = ?, notes_base = ?,
-      contenance = ?, concentration = ?, available = ?, featured = ?
-     WHERE id = ?`,
+      ref = $1, name = $2, type = $3, family = $4, price = $5, image = $6,
+      short_description = $7, description = $8,
+      notes_top = $9, notes_heart = $10, notes_base = $11,
+      contenance = $12, concentration = $13, available = $14, featured = $15
+     WHERE id = $16`,
     [
       ref,
       input.name,
@@ -151,7 +169,7 @@ export async function updateProduct(id: number, input: ProductInput): Promise<Pr
       input.available ? 1 : 0,
       input.featured ? 1 : 0,
       id,
-    ],
+    ]
   );
 
   const updated = await getProductById(id);
@@ -159,14 +177,16 @@ export async function updateProduct(id: number, input: ProductInput): Promise<Pr
   return updated;
 }
 
-export async function deleteProduct(id: number) {
-  await getPool().query("DELETE FROM products WHERE id = ?", [id]);
+export async function deleteProduct(id: number): Promise<void> {
+  const pool = getPool();
+  await pool.query("DELETE FROM products WHERE id = $1", [id]);
 }
 
 export async function findAdminByEmail(email: string) {
-  const [rows] = await getPool().query<(RowDataPacket & { id: number; email: string; password_hash: string })[]>(
-    "SELECT id, email, password_hash FROM admins WHERE email = ? LIMIT 1",
-    [email.toLowerCase().trim()],
+  const pool = getPool();
+  const result = await pool.query<{ id: number; email: string; password_hash: string }>(
+    "SELECT id, email, password_hash FROM admins WHERE email = $1 LIMIT 1",
+    [email.toLowerCase().trim()]
   );
-  return rows[0] ?? null;
+  return result.rows[0] ?? null;
 }
